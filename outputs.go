@@ -16,6 +16,7 @@ package heka_mozsvc_plugins
 
 import (
 	"log/syslog"
+	"time"
 
 	"github.com/mozilla-services/heka/pipeline"
 )
@@ -61,6 +62,8 @@ type SyslogMsg struct {
 	priority syslog.Priority
 	prefix   string
 	payload  string
+        hostname string
+        timestamp int64
 }
 
 type CefOutput struct {
@@ -88,6 +91,8 @@ func (cef *CefOutput) Run(or pipeline.OutputRunner, h pipeline.PluginHelper) (er
 	var (
 		facility, priority syslog.Priority
 		ident              string
+                hostname           string
+                timestamp          int64
 		ok                 bool
 		p                  syslog.Priority
 		e                  error
@@ -121,12 +126,24 @@ func (cef *CefOutput) Run(or pipeline.OutputRunner, h pipeline.PluginHelper) (er
 			ident = idField.ValueString[0]
 		}
 
+                hostField := pack.Message.FindFirstField("cef_meta.syslog_hostname")
+                if hostField != nil {
+                        hostname = hostField.ValueString[0]
+                }
+
+                timeField := pack.Message.FindFirstField("cef_meta.syslog_timestamp")
+                if timeField != nil {
+                       timestamp = timeField.ValueInteger[0]
+                }
+
 		syslogMsg.priority = priority | facility
 		syslogMsg.prefix = ident
+                syslogMsg.hostname = hostname
+                syslogMsg.timestamp = timestamp
 		syslogMsg.payload = pack.Message.GetPayload()
 
-		_, e = cef.syslogWriter.WriteString(syslogMsg.priority, syslogMsg.prefix,
-			syslogMsg.payload)
+		_, e = cef.syslogWriter.WriteString(syslogMsg.priority, syslogMsg.timestamp, 
+                        syslogMsg.hostname, syslogMsg.prefix, syslogMsg.payload)
 
 		if e != nil {
 			e = pipeline.NewRetryMessageError("can't write to syslog: %s", e.Error())
